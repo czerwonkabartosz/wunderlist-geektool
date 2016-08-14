@@ -1,0 +1,19 @@
+{
+  "name": "wunderlist-geektool",
+  "version": "1.0.0",
+  "description": "",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/czerwonkabartosz/wunderlist-geektool.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/czerwonkabartosz/wunderlist-geektool/issues"
+  },
+  "homepage": "https://github.com/czerwonkabartosz/wunderlist-geektool#readme"
+}
