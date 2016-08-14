@@ -473,7 +473,7 @@ new WunderlistGeekTool().run();
 	<key>Name</key>
 	<string>wunderlist-geektool</string>
 	<key>RefreshInterval</key>
-	<integer>1</integer>
+	<integer>60</integer>
 	<key>SetLocale</key>
 	<true/>
 	<key>SuccessImage</key>
