@@ -11,8 +11,8 @@ const DEFAULT_HTTP_OPTIONS = {
 	host: 'a.wunderlist.com',
 	path: '/api/v1/lists',
 	headers: {
-		'X-Access-Token': args[ 0 ],
-		'X-Client-ID': args[ 1 ]
+		'X-Access-Token': args[ 0 ] || '', // here put your access token
+		'X-Client-ID': args[ 1 ] || '' // here put your client id,
 	}
 };
 
