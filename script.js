@@ -20,10 +20,21 @@ const DEFAULT_HTTP_OPTIONS = {
 };
 
 const _result = Symbol( 'result' );
+const _printFunc = Symbol( 'printFunc' );
 
 class OutputBuilder {
-	constructor() {
+	constructor( printFunc ) {
 		this[ _result ] = '';
+		this[ _printFunc ] = printFunc;
+	}
+
+	/**
+	 * Returns output.
+	 *
+	 * @returns {String}
+	 */
+	get result() {
+		return this[ _result ];
 	}
 
 	/**
@@ -51,18 +62,23 @@ class OutputBuilder {
 	}
 
 	/**
-	 * Returns output.
-	 *
-	 * @returns {String}
+	 * Prinst result.
 	 */
-	get result() {
-		return this[ _result ];
+	print() {
+		this[ _printFunc ]( this.result );
 	}
 }
 
 const TEMP_PATH = '/tmp/';
 
 class FileCache {
+	/**
+	 * Saves information in file.
+	 *
+	 * @param {String} fileName
+	 * @param {Object} value
+	 * @returns {Promise}
+	 */
 	static saveValue( fileName, value ) {
 		return new Promise( ( resolve, reject ) => {
 			const path = TEMP_PATH + fileName;
@@ -79,6 +95,12 @@ class FileCache {
 		} );
 	}
 
+	/**
+	 * Returns object from cache file.
+	 *
+	 * @param {String} fileName
+	 * @returns {Promise.<Object>}
+	 */
 	static getValue( fileName ) {
 		return new Promise( ( resolve, reject ) => {
 			fs.readFile( `${TEMP_PATH}${fileName}`, 'utf8', ( err, data ) => {
@@ -93,8 +115,11 @@ class FileCache {
 }
 
 class WunderlistGeekTool {
-	render() {
-		const output = new OutputBuilder();
+	/**
+	 * Gets data and displays them.
+	 */
+	run() {
+		const output = new OutputBuilder( console.log );
 
 		console.log( `Last update: ${new Date().toUTCString()}` );
 		output.addSeparator();
@@ -112,7 +137,7 @@ class WunderlistGeekTool {
 					}
 				}
 
-				console.log( output.result );
+				output.print();
 
 				FileCache.saveValue( 'output', {
 					result: output.result,
@@ -131,7 +156,7 @@ class WunderlistGeekTool {
 								.addSeparator()
 								.addLine( `Information from cache ( ${new Date( data.date ).toUTCString()} )` );
 
-							console.log( output.result );
+							output.print();
 						}
 					} );
 			} );
@@ -307,7 +332,7 @@ class HttpHelper {
 	}
 }
 
-new WunderlistGeekTool().render();
+new WunderlistGeekTool().run();
 
 /**
  * @typedef {Object} List
