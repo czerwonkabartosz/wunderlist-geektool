@@ -5,14 +5,17 @@
 const https = require( 'https' );
 const fs = require( 'fs' );
 
+const ACCESS_TOKEN = ''; // here put your access token
+const CLIENT_ID = ''; // here put your client id
+
 const args = process.argv.slice( 2 );
 
 const DEFAULT_HTTP_OPTIONS = {
 	host: 'a.wunderlist.com',
 	path: '/api/v1/lists',
 	headers: {
-		'X-Access-Token': args[ 0 ] || '', // here put your access token
-		'X-Client-ID': args[ 1 ] || '' // here put your client id,
+		'X-Access-Token': args[ 0 ] || ACCESS_TOKEN,
+		'X-Client-ID': args[ 1 ] || CLIENT_ID
 	}
 };
 
