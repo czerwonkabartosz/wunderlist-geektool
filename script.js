@@ -1,4 +1,9 @@
+#!/usr/bin/env /usr/local/bin/node
+
+'use strict';
+
 const https = require( 'https' );
+const fs = require( 'fs' );
 
 const args = process.argv.slice( 2 );
 
@@ -11,27 +16,121 @@ const DEFAULT_HTTP_OPTIONS = {
 	}
 };
 
+const _result = Symbol( 'result' );
+
+class OutputBuilder {
+	constructor() {
+		this[ _result ] = '';
+	}
+
+	/**
+	 * Adds string to output and adds new line to the end.
+	 *
+	 * @param {String} line
+	 *
+	 * @returns {OutputBuilder}
+	 */
+	addLine( line ) {
+		this[ _result ] += line + ' \n';
+
+		return this;
+	}
+
+	/**
+	 * Adds empty line.
+	 *
+	 * @returns {OutputBuilder}
+	 */
+	addSeparator() {
+		this.addLine( '' );
+
+		return this;
+	}
+
+	/**
+	 * Returns output.
+	 *
+	 * @returns {String}
+	 */
+	get result() {
+		return this[ _result ];
+	}
+}
+
+const TEMP_PATH = '/tmp/';
+
+class FileCache {
+	static saveValue( fileName, value ) {
+		return new Promise( ( resolve, reject ) => {
+			const path = TEMP_PATH + fileName;
+
+			value = JSON.stringify( value );
+
+			fs.writeFile( path, value, ( err ) => {
+				if ( err ) {
+					return reject( err );
+				}
+
+				resolve();
+			} );
+		} );
+	}
+
+	static getValue( fileName ) {
+		return new Promise( ( resolve, reject ) => {
+			fs.readFile( `${TEMP_PATH}${fileName}`, 'utf8', ( err, data ) => {
+				if ( err ) {
+					return reject( err );
+				}
+
+				resolve( JSON.parse( data ) );
+			} );
+		} );
+	}
+}
+
 class WunderlistGeekTool {
 	render() {
-		console.log( `Last update: ${new Date()}` );
+		const output = new OutputBuilder();
+
+		console.log( `Last update: ${new Date().toUTCString()}` );
+		output.addSeparator();
 
 		this._getListsWithTasks()
 			.then( ( lists ) => {
 				for ( const list of lists.filter( list => list.tasks.length ) ) {
-					console.log( `${list.title} ( ${list.tasks.length} )` );
+					output.addLine( `${list.title} ( ${list.tasks.length} )` );
 
 					for ( const task of list.tasks ) {
-						const dayToTask = this._getDaysToTask( task );
+						let daysToTask = this._getDaysToTask( task );
 
-						console.log( `     ${task.starred ? '*' : ' '}${this._isAfterDeadline( task ) ? '!' : ' ' }    ${task.title}    ${task.due_date ||
-						''}${dayToTask !== null ? ` ( ${dayToTask} )` : ''}` );
+						output.addLine( `     ${task.starred ? '*' : ' '}${this._isAfterDeadline( task ) ? '!' : ' ' }    ${task.title}    ${task.due_date ||
+						''}${daysToTask !== null ? ` ( ${daysToTask} )` : ''}` );
 					}
 				}
+
+				console.log( output.result );
+
+				FileCache.saveValue( 'output', {
+					result: output.result,
+					date: new Date()
+				} );
 			} )
 			.catch( ( err ) => {
 				if ( err[ 'invalid_request' ] ) {
-					console.log( 'Invalid Request. It is possible that lack of data - Access Token or Client Id' );
+					output.addLine( 'Invalid Request. It is possible that lack of data - Access Token or Client Id' ).addSeparator();
 				}
+
+				FileCache.getValue( 'output' )
+					.then( ( data ) => {
+						if ( data ) {
+							output.addLine( data.result )
+								.addSeparator()
+								.addLine( `Information from cache ( ${new Date( data.date ).toUTCString()} )` );
+
+							console.log( output.result );
+						}
+					} );
 			} );
 	}
 
@@ -196,6 +295,10 @@ class HttpHelper {
 
 					resolve( response );
 				} );
+
+				res.on( 'error', ( err ) => reject( err ) );
+
+				res.on( 'timeout', () => reject() );
 			} );
 		} );
 	}
