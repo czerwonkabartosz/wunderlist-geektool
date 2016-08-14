@@ -3,11 +3,347 @@
 <plist version="1.0">
 <dict>
 	<key>Command</key>
-	<string>/usr/local/bin/node /script.js access_token client_id</string>
+	<string>#!/usr/bin/env /usr/local/bin/node
+
+'use strict';
+
+const https = require( 'https' );
+const fs = require( 'fs' );
+
+const ACCESS_TOKEN = ''; // here put your access token
+const CLIENT_ID = ''; // here put your client id
+
+const args = process.argv.slice( 2 );
+
+const DEFAULT_HTTP_OPTIONS = {
+	host: 'a.wunderlist.com',
+	path: '/api/v1/lists',
+	headers: {
+		'X-Access-Token': args[ 0 ] || ACCESS_TOKEN,
+		'X-Client-ID': args[ 1 ] || CLIENT_ID
+	}
+};
+
+const _result = Symbol( 'result' );
+
+class OutputBuilder {
+	constructor() {
+		this[ _result ] = '';
+	}
+
+	/**
+	 * Adds string to output and adds new line to the end.
+	 *
+	 * @param {String} line
+	 *
+	 * @returns {OutputBuilder}
+	 */
+	addLine( line ) {
+		this[ _result ] += line + ' \n';
+
+		return this;
+	}
+
+	/**
+	 * Adds empty line.
+	 *
+	 * @returns {OutputBuilder}
+	 */
+	addSeparator() {
+		this.addLine( '' );
+
+		return this;
+	}
+
+	/**
+	 * Returns output.
+	 *
+	 * @returns {String}
+	 */
+	get result() {
+		return this[ _result ];
+	}
+}
+
+const TEMP_PATH = '/tmp/';
+
+class FileCache {
+	static saveValue( fileName, value ) {
+		return new Promise( ( resolve, reject ) =&gt; {
+			const path = TEMP_PATH + fileName;
+
+			value = JSON.stringify( value );
+
+			fs.writeFile( path, value, ( err ) =&gt; {
+				if ( err ) {
+					return reject( err );
+				}
+
+				resolve();
+			} );
+		} );
+	}
+
+	static getValue( fileName ) {
+		return new Promise( ( resolve, reject ) =&gt; {
+			fs.readFile( `${TEMP_PATH}${fileName}`, 'utf8', ( err, data ) =&gt; {
+				if ( err ) {
+					return reject( err );
+				}
+
+				resolve( JSON.parse( data ) );
+			} );
+		} );
+	}
+}
+
+class WunderlistGeekTool {
+	render() {
+		const output = new OutputBuilder();
+
+		console.log( `Last update: ${new Date().toUTCString()}` );
+		output.addSeparator();
+
+		this._getListsWithTasks()
+			.then( ( lists ) =&gt; {
+				for ( const list of lists.filter( list =&gt; list.tasks.length ) ) {
+					output.addLine( `${list.title} ( ${list.tasks.length} )` );
+
+					for ( const task of list.tasks ) {
+						let daysToTask = this._getDaysToTask( task );
+
+						output.addLine( `     ${task.starred ? '*' : ' '}${this._isAfterDeadline( task ) ? '!' : ' ' }    ${task.title}    ${task.due_date ||
+						''}${daysToTask !== null ? ` ( ${daysToTask} )` : ''}` );
+					}
+				}
+
+				console.log( output.result );
+
+				FileCache.saveValue( 'output', {
+					result: output.result,
+					date: new Date()
+				} );
+			} )
+			.catch( ( err ) =&gt; {
+				if ( err[ 'invalid_request' ] ) {
+					output.addLine( 'Invalid Request. It is possible that lack of data - Access Token or Client Id' ).addSeparator();
+				}
+
+				FileCache.getValue( 'output' )
+					.then( ( data ) =&gt; {
+						if ( data ) {
+							output.addLine( data.result )
+								.addSeparator()
+								.addLine( `Information from cache ( ${new Date( data.date ).toUTCString()} )` );
+
+							console.log( output.result );
+						}
+					} );
+			} );
+	}
+
+	/**
+	 * Returns information about the number of days to task.
+	 *
+	 * @private
+	 * @param {Task} task
+	 * @returns {Number}
+	 */
+	_getDaysToTask( task ) {
+		if ( !task.due_date ) {
+			return null;
+		}
+
+		const dueDate = new Date( task.due_date );
+		dueDate.setHours( 0, 0, 0, 0 );
+
+		return Math.round( (dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) );
+	}
+
+	/**
+	 * Returns information whether a task is after the deadline.
+	 *
+	 * @private
+	 * @param {Task} task
+	 * @returns {Boolean}
+	 */
+	_isAfterDeadline( task ) {
+		const dayToTask = this._getDaysToTask( task );
+
+		return dayToTask !== null &amp;&amp; dayToTask &lt;= 0;
+	}
+
+	/**
+	 * Returns lists.
+	 *
+	 * @private
+	 * @returns {Promise.&lt;Array.&lt;List&gt;&gt;}
+	 */
+	_getLists() {
+		return HttpHelper.get( '/api/v1/lists' )
+			.then( ( lists ) =&gt; {
+				return this._getListsOrder()
+					.then( ( ids ) =&gt; {
+						const results = [];
+
+						for ( const id of ids ) {
+							const list = lists.find( list =&gt; list.id === id );
+
+							if ( list ) {
+								results.push( list );
+							}
+						}
+
+						return results;
+					} );
+			} );
+	}
+
+	/**
+	 * Returns lists with included tasks.
+	 *
+	 * @private
+	 * @returns {Promise.&lt;Array.&lt;List&gt;&gt;}
+	 */
+	_getListsWithTasks() {
+		return this._getLists().then( ( lists ) =&gt; {
+			const getAllTasks = [];
+
+			for ( const list of lists ) {
+				getAllTasks.push( new Promise( ( resolve ) =&gt; {
+					this._getTasksForList( list.id )
+						.then( ( tasks ) =&gt; {
+							list.tasks = tasks;
+							resolve();
+						} );
+				} ) );
+			}
+
+			return Promise.all( getAllTasks )
+				.then( () =&gt; lists );
+		} );
+	}
+
+	/**
+	 * Returns lists order.
+	 *
+	 * @private
+	 * @returns {Promise.&lt;Array.&lt;Number&gt;&gt;}
+	 */
+	_getListsOrder() {
+		return HttpHelper.get( '/api/v1/list_positions' )
+			.then( ( res ) =&gt; res[ 0 ].values );
+	}
+
+	/**
+	 * Return tasks for list.
+	 *
+	 * @private
+	 * @param {Number} listId
+	 * @returns {Promise.&lt;Array.&lt;Task&gt;&gt;}
+	 */
+	_getTasksForList( listId ) {
+		return HttpHelper.get( `/api/v1/tasks?list_id=${listId}` )
+			.then( ( tasks ) =&gt; {
+				const results = [];
+
+				return this._getTasksOrder( listId )
+					.then( ( ids ) =&gt; {
+						for ( const id of ids ) {
+							const task = tasks.find( task =&gt; task.id === id );
+
+							if ( task ) {
+								results.push( task );
+							}
+						}
+
+						return results;
+					} );
+			} );
+	}
+
+	/**
+	 * Returns tasks order.
+	 *
+	 * @private
+	 * @param {Number} listId
+	 * @returns {Promise.&lt;Array.&lt;Number&gt;&gt;}
+	 */
+	_getTasksOrder( listId ) {
+		return HttpHelper.get( `/api/v1/task_positions?list_id=${listId}` )
+			.then( ( res ) =&gt; res[ 0 ].values );
+	}
+}
+
+class HttpHelper {
+	/**
+	 * Sends request to Wunderlist API.
+	 *
+	 * @param {String} path
+	 * @returns {Promise.&lt;*&gt;}
+	 */
+	static get( path ) {
+		return new Promise( ( resolve, reject )=&gt; {
+			const options = Object.assign( {}, DEFAULT_HTTP_OPTIONS );
+			options.path = path;
+
+			https.get( options, ( res ) =&gt; {
+				let body = '';
+
+				res.on( 'data', ( chunk ) =&gt; {
+					body += chunk;
+				} );
+
+				res.on( 'end', () =&gt; {
+					const response = JSON.parse( body );
+
+					if ( response[ 'invalid_request' ] ) {
+						return reject( response );
+					}
+
+					resolve( response );
+				} );
+
+				res.on( 'error', ( err ) =&gt; reject( err ) );
+
+				res.on( 'timeout', () =&gt; reject() );
+			} );
+		} );
+	}
+}
+
+new WunderlistGeekTool().render();
+
+/**
+ * @typedef {Object} List
+ * @property {Number} id
+ * @property {Date} created_at
+ * @property {String} title
+ */
+
+/**
+ * @typedef {Object} ListWithTasks
+ * @property {Number} id
+ * @property {Date} created_at
+ * @property {String} title
+ * @property {Array.&lt;Task&gt;} tasks
+ */
+
+/**
+ * @typedef {Object} Task
+ * @property {Number} id
+ * @property {Date} created_at
+ * @property {Date} due_date
+ * @property {String} title
+ * @property {Boolean} starred
+ */
+</string>
+	<key>DisplayID</key>
+	<integer>69731840</integer>
 	<key>DisplayStatusImage</key>
 	<false/>
 	<key>DoesOverrideText</key>
-	<true/>
+	<false/>
 	<key>DropShadow</key>
 	<false/>
 	<key>FailureImage</key>
@@ -102,9 +438,9 @@
 	<key>FontFamily</key>
 	<string>Consolas</string>
 	<key>FontSize</key>
-	<real>10</real>
+	<real>11</real>
 	<key>GeekletFrame</key>
-	<string>{{66.234375, 676.09375}, {426, 312}}</string>
+	<string>{{46, 532}, {460.65234375, 396.2890625}}</string>
 	<key>HasShadow</key>
 	<false/>
 	<key>Identifier</key>
@@ -112,7 +448,7 @@
 	<key>Name</key>
 	<string>wunderlist-geektool</string>
 	<key>RefreshInterval</key>
-	<integer>30</integer>
+	<integer>1</integer>
 	<key>SetLocale</key>
 	<true/>
 	<key>SuccessImage</key>
