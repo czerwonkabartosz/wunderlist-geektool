@@ -1,6 +1,7 @@
 # Wunderlist Geektool
 
 Very simple [GeekTool](http://www.tynsoe.org/v2/geektool/) script written in Node JS to display tasks from [Wunderlist](https://www.wunderlist.com/).
+Created without additional dependencies for easier be used.
 
 ![](https://github.com/czerwonkabartosz/wunderlist-geektool/blob/master/screenshots/details.png?raw=true)
 

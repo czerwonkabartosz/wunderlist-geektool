@@ -24,6 +24,41 @@ const DEFAULT_HTTP_OPTIONS = {
 	}
 };
 
+const COLORS = {
+	RESET: '\x1b[0m',
+	RED: '\x1b[31m',
+	YELLOW: '\x1b[33m'
+};
+
+Date.prototype.monthNames = [
+	"January", "February", "March",
+	"April", "May", "June",
+	"July", "August", "September",
+	"October", "November", "December"
+];
+
+Date.prototype.daysNames = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
+
+Date.prototype.getMonthName = function() {
+	return this.monthNames[ this.getMonth() ];
+};
+
+Date.prototype.getShortMonthName = function() {
+	return this.getMonthName().substr( 0, 3 );
+};
+
+Date.prototype.getDayName = function() {
+	return this.daysNames[ this.getDay() ];
+};
+
+Date.prototype.getShortDayName = function() {
+	return this.getDayName().substr( 0, 3 );
+};
+
+Date.prototype.toShortFormatDate = function() {
+	return `${this.getShortDayName()}, ${this.getDate()} ${this.getShortMonthName()}`;
+};
+
 const _result = Symbol( 'result' );
 const _printFunc = Symbol( 'printFunc' );
 
@@ -49,8 +84,8 @@ class OutputBuilder {
 	 *
 	 * @returns {OutputBuilder}
 	 */
-	addLine( line ) {
-		this[ _result ] += line + ' \n';
+	addLine( line, color = null ) {
+		this[ _result ] += this._addColor( line + ' \n', color );
 
 		return this;
 	}
@@ -67,10 +102,26 @@ class OutputBuilder {
 	}
 
 	/**
-	 * Prinst result.
+	 * Prints result.
 	 */
 	print() {
 		this[ _printFunc ]( this.result );
+	}
+
+	/**
+	 * Adds color to string.
+	 *
+	 * @private
+	 * @param {String} line
+	 * @param {String} color
+	 * @returns {String}
+	 */
+	_addColor( line, color ) {
+		if ( !color ) {
+			return line;
+		}
+
+		return color + line + COLORS.RESET;
 	}
 }
 
@@ -119,6 +170,62 @@ class FileCache {
 	}
 }
 
+class Task {
+	constructor( task ) {
+		this.id = task.id;
+		this.title = task.title;
+		this.starred = task.starred;
+		this.due_date = task.due_date;
+	}
+
+	/**
+	 * Returns formatted due date.
+	 *
+	 * @returns {String}
+	 */
+	get formattedDueDate() {
+		return this.due_date ? new Date( this.due_date ).toShortFormatDate() : '';
+	}
+
+	/**
+	 * Returns information whether a task is after the deadline.
+	 *
+	 * @returns {Boolean}
+	 */
+	get isAfterDeadline() {
+		return this.daysToTask !== null &amp;&amp; this.daysToTask &lt;= 0;
+	}
+
+	/**
+	 * Returns information about the number of days to task.
+	 *
+	 * @returns {Number}
+	 */
+	get daysToTask() {
+		if ( !this.due_date ) {
+			return null;
+		}
+
+		const dueDate = new Date( this.due_date );
+		dueDate.setHours( 0, 0, 0, 0 );
+
+		const now = new Date();
+		now.setHours( 0, 0, 0, 0 );
+
+		return Math.round( (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24) );
+	}
+
+	/**
+	 * Converts task to string.
+	 *
+	 * @returns {string}
+	 */
+	toString() {
+		return `  ${this.starred ? '*' : ' '}  ${this.title}  ${this.formattedDueDate} ${this.isAfterDeadline ? '(' +
+		Math.abs( this.daysToTask ) + ' days ago)' : ' ' }`;
+	}
+}
+
 class WunderlistGeekTool {
 	/**
 	 * Gets data and displays them.
@@ -126,19 +233,23 @@ class WunderlistGeekTool {
 	run() {
 		const output = new OutputBuilder( console.log );
 
-		console.log( `Last update: ${new Date().toUTCString()}` );
-		output.addSeparator();
-
 		this._getListsWithTasks()
 			.then( ( lists ) =&gt; {
 				for ( const list of lists.filter( list =&gt; list.tasks.length ) ) {
 					output.addLine( `${list.title} ( ${list.tasks.length} )` );
 
 					for ( const task of list.tasks ) {
-						let daysToTask = this._getDaysToTask( task );
+						let lineColor = null;
 
-						output.addLine( `     ${task.starred ? '*' : ' '}${this._isAfterDeadline( task ) ? '!' : ' ' }    ${task.title}    ${task.due_date ||
-						''}${daysToTask !== null ? ` ( ${daysToTask} )` : ''}` );
+						if ( task.starred ) {
+							lineColor = COLORS.YELLOW;
+						}
+
+						if ( task.isAfterDeadline ) {
+							lineColor = COLORS.RED;
+						}
+
+						output.addLine( task.toString(), lineColor );
 					}
 				}
 
@@ -165,37 +276,6 @@ class WunderlistGeekTool {
 						}
 					} );
 			} );
-	}
-
-	/**
-	 * Returns information about the number of days to task.
-	 *
-	 * @private
-	 * @param {Task} task
-	 * @returns {Number}
-	 */
-	_getDaysToTask( task ) {
-		if ( !task.due_date ) {
-			return null;
-		}
-
-		const dueDate = new Date( task.due_date );
-		dueDate.setHours( 0, 0, 0, 0 );
-
-		return Math.round( (dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) );
-	}
-
-	/**
-	 * Returns information whether a task is after the deadline.
-	 *
-	 * @private
-	 * @param {Task} task
-	 * @returns {Boolean}
-	 */
-	_isAfterDeadline( task ) {
-		const dayToTask = this._getDaysToTask( task );
-
-		return dayToTask !== null &amp;&amp; dayToTask &lt;= 0;
 	}
 
 	/**
@@ -278,7 +358,7 @@ class WunderlistGeekTool {
 							const task = tasks.find( task =&gt; task.id === id );
 
 							if ( task ) {
-								results.push( task );
+								results.push( new Task( task ) );
 							}
 						}
 
@@ -461,11 +541,11 @@ new WunderlistGeekTool().run();
 	ivgZ+Kj5OPnH+lf65/t3/Af8mP0p/br+S/7c/23//w==
 	</data>
 	<key>FontFamily</key>
-	<string>Consolas</string>
+	<string>CourierNewPSMT</string>
 	<key>FontSize</key>
-	<real>11</real>
+	<real>10</real>
 	<key>GeekletFrame</key>
-	<string>{{46, 532}, {460.65234375, 396.2890625}}</string>
+	<string>{{21.1171875, 43}, {461, 397}}</string>
 	<key>HasShadow</key>
 	<false/>
 	<key>Identifier</key>
