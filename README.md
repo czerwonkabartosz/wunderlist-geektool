@@ -26,6 +26,9 @@ This script was created to use it with GeekTool, but can be easily use it also i
 const ACCESS_TOKEN = ''; // here put your access token
 const CLIENT_ID = ''; // here put your client id
 ```
+##Screenshots
+![](https://raw.githubusercontent.com/czerwonkabartosz/wunderlist-geektool/master/screenshots/desktop_1.png)
+
 
 ##Credits and license
 By [Bartosz Czerwonka](https://github.com/czerwonkabartosz) under the MIT license:
